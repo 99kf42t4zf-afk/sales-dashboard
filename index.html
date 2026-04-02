@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>店舗別 商品売上比較ダッシュボード</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+    background: #f0f2f5;
+    color: #333;
+    padding: 20px;
+  }
+  h1 {
+    text-align: center;
+    font-size: 1.8rem;
+    color: #1a1a2e;
+    margin-bottom: 8px;
+  }
+  .subtitle {
+    text-align: center;
+    color: #666;
+    font-size: 0.95rem;
+    margin-bottom: 30px;
+  }
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 30px;
+  }
+  .kpi-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    text-align: center;
+  }
+  .kpi-card .label { font-size: 0.85rem; color: #888; margin-bottom: 6px; }
+  .kpi-card .value { font-size: 1.8rem; font-weight: 700; }
+  .kpi-card .sub { font-size: 0.8rem; color: #999; margin-top: 4px; }
+  .up { color: #2ecc71; }
+  .down { color: #e74c3c; }
+  .even { color: #f39c12; }
+
+  .chart-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 30px;
+  }
+  .chart-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+  .chart-card.full { grid-column: 1 / -1; }
+  .chart-card h2 {
+    font-size: 1.1rem;
+    color: #1a1a2e;
+    margin-bottom: 4px;
+  }
+  .chart-card .desc {
+    font-size: 0.8rem;
+    color: #999;
+    margin-bottom: 16px;
+  }
+  .chart-container {
+    position: relative;
+    width: 100%;
+  }
+
+  table.detail {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+  table.detail th {
+    background: #1a1a2e;
+    color: #fff;
+    padding: 10px 12px;
+    text-align: right;
+    white-space: nowrap;
+  }
+  table.detail th:first-child,
+  table.detail th:nth-child(2) { text-align: left; }
+  table.detail td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #eee;
+    text-align: right;
+    white-space: nowrap;
+  }
+  table.detail td:first-child,
+  table.detail td:nth-child(2) { text-align: left; }
+  table.detail tr:hover { background: #f8f9fa; }
+  .ratio-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 0.8rem;
+  }
+  .ratio-up { background: #d4edda; color: #155724; }
+  .ratio-down { background: #f8d7da; color: #721c24; }
+  .ratio-even { background: #fff3cd; color: #856404; }
+
+  .legend-note {
+    text-align: center;
+    font-size: 0.8rem;
+    color: #999;
+    margin-top: 10px;
+    padding: 10px;
+  }
+
+  .store-section {
+    margin-bottom: 40px;
+  }
+  .store-section h2 {
+    font-size: 1.3rem;
+    color: #1a1a2e;
+    border-left: 4px solid #3498db;
+    padding-left: 12px;
+    margin-bottom: 16px;
+  }
+
+  /* === Analysis Section === */
+  .analysis-section {
+    background: #fff;
+    border-radius: 12px;
+    padding: 28px 32px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    margin-bottom: 30px;
+  }
+  .analysis-section h2 {
+    font-size: 1.3rem;
+    color: #1a1a2e;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #1a1a2e;
+    padding-bottom: 8px;
+  }
+  .insight-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+  .insight-card {
+    border-radius: 10px;
+    padding: 18px 20px;
+    border-left: 5px solid;
+  }
+  .insight-card.alert { background: #fef2f2; border-color: #e74c3c; }
+  .insight-card.warn { background: #fffbeb; border-color: #f39c12; }
+  .insight-card.good { background: #f0fdf4; border-color: #2ecc71; }
+  .insight-card.info { background: #eff6ff; border-color: #3498db; }
+  .insight-card h3 {
+    font-size: 1rem;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .insight-card h3 .tag {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 8px;
+    color: #fff;
+    font-weight: 600;
+  }
+  .tag-alert { background: #e74c3c; }
+  .tag-warn { background: #f39c12; }
+  .tag-good { background: #2ecc71; }
+  .tag-info { background: #3498db; }
+  .insight-card p { font-size: 0.85rem; color: #555; line-height: 1.7; }
+  .insight-card .data-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.82rem;
+    padding: 3px 0;
+    border-bottom: 1px dashed #ddd;
+  }
+  .insight-card .data-row:last-child { border-bottom: none; }
+  .insight-card .data-row .val { font-weight: 700; }
+  .summary-box {
+    background: #1a1a2e;
+    color: #fff;
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-top: 10px;
+  }
+  .summary-box h3 { font-size: 1rem; margin-bottom: 12px; color: #f39c12; }
+  .summary-box ul { list-style: none; padding: 0; }
+  .summary-box li {
+    font-size: 0.88rem;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    line-height: 1.6;
+  }
+  .summary-box li:last-child { border-bottom: none; }
+  .summary-box .label-tag {
+    display: inline-block;
+    font-size: 0.7rem;
+    padding: 1px 8px;
+    border-radius: 6px;
+    margin-right: 6px;
+    font-weight: 600;
+  }
+  .label-red { background: #e74c3c; }
+  .label-yellow { background: #f39c12; color: #333; }
+  .label-green { background: #2ecc71; color: #333; }
+  .label-blue { background: #3498db; }
+
+  @media (max-width: 768px) {
+    .chart-grid { grid-template-columns: 1fr; }
+    .kpi-row { grid-template-columns: 1fr 1fr; }
+    .insight-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<h1>店舗別 商品売上比較ダッシュボード</h1>
+<p class="subtitle">月単位 商品売上比較（比較元 vs 比較先） | 全8店舗</p>
+
+<div id="app"></div>
+
+<div class="legend-note">
+  比較元 = 当期 / 比較先 = 前期 &nbsp;|&nbsp; 比率100%以上 = 前期より増加（緑）/ 100%未満 = 減少（赤）
+</div>
+
+<script>
+Chart.register(ChartDataLabels);
+
+const storeData = {
+  "全体": {
+    items: [
+      {name:"ｽﾀﾝﾀﾞｰﾄ", cur:533245, prev:664667, curQty:1157, prevQty:1369},
+      {name:"焼き立て", cur:13438, prev:56936, curQty:49, prevQty:199},
+      {name:"季節新作", cur:341835, prev:382438, curQty:489, prevQty:617},
+      {name:"ﾎｰﾙｹｰｷ", cur:83260, prev:83306, curQty:21, prevQty:20},
+      {name:"ﾛｰﾙｹｰｷ【H】", cur:5685, prev:3939, curQty:2, prevQty:2},
+      {name:"ﾎｰﾙ季節", cur:101254, prev:88479, curQty:31, prevQty:24},
+      {name:"ﾄｯﾋﾟﾝｸﾞ", cur:4676, prev:11910, curQty:20, prevQty:38},
+      {name:"焼菓子", cur:97457, prev:101112, curQty:430, prevQty:369},
+      {name:"ﾗｲﾄｷﾞﾌﾄ", cur:14315, prev:84269, curQty:15, prevQty:141},
+      {name:"焼菓子ｷﾞﾌﾄ", cur:63150, prev:49250, curQty:31, prevQty:27},
+      {name:"ｼﾞｪﾗｰﾄTO", cur:73996, prev:0, curQty:214, prevQty:0},
+      {name:"季節商品", cur:58285, prev:2600, curQty:219, prevQty:11},
+      {name:"季節ﾗｲﾄｷﾞﾌﾄ", cur:3750, prev:8250, curQty:5, prevQty:8},
+      {name:"茶葉", cur:134418, prev:116922, curQty:200, prevQty:186},
+      {name:"テラス", cur:2047486, prev:2041225, curQty:4250, prevQty:4513},
+      {name:"テラスSet", cur:2092190, prev:2273039, curQty:4765, prevQty:5965},
+    ],
+    total: {cur:5669953, prev:5987811, curQty:11995, prevQty:13657}
+  },
+  "寝屋川": {
+    items: [
+      {name:"ｽﾀﾝﾀﾞｰﾄ", cur:2695229, prev:2872260, curQty:5639, prevQty:6922},
+      {name:"焼き立て", cur:282333, prev:153075, curQty:814, prevQty:494},
+      {name:"季節新作", cur:2740973, prev:2715613, curQty:4090, prevQty:4243},
+      {name:"ﾎｰﾙｹｰｷ", cur:2856241, prev:2650881, curQty:746, prevQty:676},
+      {name:"ﾛｰﾙｹｰｷ【H】", cur:844349, prev:731323, curQty:382, prevQty:355},
+      {name:"ﾎｰﾙ季節", cur:2145847, prev:2212471, curQty:536, prevQty:543},
+      {name:"ﾄｯﾋﾟﾝｸﾞ", cur:245226, prev:270649, curQty:1036, prevQty:1081},
+      {name:"焼菓子", cur:10139, prev:21657, curQty:64, prevQty:123},
+      {name:"季節ギフト", cur:108126, prev:23440, curQty:49, prevQty:16},
+      {name:"茶葉", cur:6810, prev:73620, curQty:30, prevQty:165},
+      {name:"ｷｬﾝﾄﾞﾙ", cur:31663, prev:33408, curQty:269, prevQty:154},
+      {name:"季節商品", cur:38494, prev:0, curQty:116, prevQty:0},
+    ],
+    total: {cur:11973589, prev:11793047, curQty:14076, prevQty:15287}
+  },
+  "GIFT": {
+    items: [
+      {name:"焼菓子", cur:674290, prev:632504, curQty:2832, prevQty:2666},
+      {name:"ﾗｲﾄｷﾞﾌﾄ", cur:803122, prev:822099, curQty:1228, prevQty:1266},
+      {name:"焼菓子ｷﾞﾌﾄ", cur:2278416, prev:2684652, curQty:972, prevQty:1346},
+      {name:"季節商品", cur:184127, prev:100106, curQty:588, prevQty:383},
+      {name:"季節ﾗｲﾄｷﾞﾌﾄ", cur:371818, prev:527779, curQty:286, prevQty:522},
+      {name:"季節ギフト", cur:530527, prev:266469, curQty:293, prevQty:186},
+      {name:"茶葉", cur:798616, prev:689167, curQty:1473, prevQty:1388},
+      {name:"箱他", cur:149586, prev:123370, curQty:1218, prevQty:1368},
+      {name:"ｼﾞｪﾗｰﾄTO", cur:76556, prev:70886, curQty:241, prevQty:162},
+      {name:"ｽﾀﾝﾀﾞｰﾄ", cur:13106, prev:8390, curQty:24, prevQty:15},
+      {name:"季節新作", cur:18649, prev:2840, curQty:27, prevQty:5},
+    ],
+    total: {cur:5935174, prev:5955532, curQty:9241, prevQty:9357}
+  },
+  "EaT": {
+    items: [
+      {name:"EaT_イートイン", cur:2203808, prev:1954987, curQty:1403, prevQty:1251},
+      {name:"季節新作", cur:270403, prev:212323, curQty:390, prevQty:323},
+      {name:"ｽﾀﾝﾀﾞｰﾄ", cur:135087, prev:123464, curQty:241, prevQty:231},
+      {name:"ｼﾞｪﾗｰﾄイートイン", cur:75459, prev:83983, curQty:165, prevQty:198},
+      {name:"茶葉", cur:22326, prev:23021, curQty:22, prevQty:28},
+      {name:"焼き立て", cur:8675, prev:1645, curQty:30, prevQty:6},
+      {name:"ﾎｰﾙｹｰｷ", cur:7041, prev:0, curQty:2, prevQty:0},
+      {name:"EaT_TO", cur:4880, prev:2440, curQty:11, prevQty:6},
+    ],
+    total: {cur:2697826, prev:2341227, curQty:2649, prevQty:2413}
+  },
+  "茨木": {
+    items: [
+      {name:"季節新作", cur:2066422, prev:1791859, curQty:2988, prevQty:2803},
+      {name:"ｽﾀﾝﾀﾞｰﾄ", cur:1993660, prev:2195190, curQty:4765, prevQty:5014},
+      {name:"ﾎｰﾙｹｰｷ", cur:1822427, prev:1800197, curQty:460, prevQty:453},
+      {name:"ﾎｰﾙ季節", cur:1724284, prev:1836842, curQty:423, prevQty:447},
+      {name:"焼菓子ｷﾞﾌﾄ", cur:1353536, prev:1737346, curQty:703, prevQty:985},
+      {name:"ﾛｰﾙｹｰｷ【H】", cur:707628, prev:920730, curQty:337, prevQty:454},
+      {name:"ﾗｲﾄｷﾞﾌﾄ", cur:525709, prev:424681, curQty:757, prevQty:638},
+      {name:"茶葉", cur:342945, prev:468906, curQty:666, prevQty:913},
+      {name:"茨木", cur:338742, prev:262629, curQty:507, prevQty:426},
+      {name:"季節ギフト", cur:335972, prev:139207, curQty:194, prevQty:95},
+      {name:"焼菓子", cur:321828, prev:504591, curQty:1301, prevQty:2036},
+      {name:"季節ﾗｲﾄｷﾞﾌﾄ", cur:260644, prev:348010, curQty:199, prevQty:313},
+      {name:"ﾄｯﾋﾟﾝｸﾞ", cur:139566, prev:141920, curQty:614, prevQty:579},
+      {name:"季節商品", cur:95461, prev:33224, curQty:258, prevQty:111},
+      {name:"焼き立て", cur:88742, prev:148569, curQty:367, prevQty:624},
+      {name:"箱他", cur:59510, prev:65487, curQty:970, prevQty:1268},
+    ],
+    total: {cur:12183122, prev:12801972, curQty:16050, prevQty:17619}
+  },
+  "香里園": {
+    items: [
+      {name:"季節新作", cur:1717054, prev:1566361, curQty:2536, prevQty:2446},
+      {name:"ｽﾀﾝﾀﾞｰﾄ", cur:1365270, prev:1140347, curQty:3366, prevQty:2503},
+      {name:"ﾎｰﾙｹｰｷ", cur:1238796, prev:1047954, curQty:320, prevQty:270},
+      {name:"ﾎｰﾙ季節", cur:830041, prev:718170, curQty:213, prevQty:190},
+      {name:"焼菓子ｷﾞﾌﾄ", cur:709338, prev:765151, curQty:359, prevQty:417},
+      {name:"ﾛｰﾙｹｰｷ【H】", cur:357421, prev:305465, curQty:166, prevQty:148},
+      {name:"ﾗｲﾄｷﾞﾌﾄ", cur:336479, prev:309489, curQty:467, prevQty:450},
+      {name:"焼菓子", cur:264660, prev:278882, curQty:1061, prevQty:1134},
+      {name:"季節ギフト", cur:232100, prev:63201, curQty:131, prevQty:52},
+      {name:"茶葉", cur:162143, prev:172936, curQty:297, prevQty:460},
+      {name:"季節ﾗｲﾄｷﾞﾌﾄ", cur:140139, prev:145130, curQty:128, prevQty:161},
+      {name:"季節商品", cur:72509, prev:23658, curQty:202, prevQty:78},
+      {name:"ﾄｯﾋﾟﾝｸﾞ", cur:67916, prev:77410, curQty:261, prevQty:256},
+    ],
+    total: {cur:7555225, prev:6661785, curQty:10352, prevQty:9269}
+  },
+  "ライブラリ": {
+    items: [
+      {name:"ﾗｲﾌﾞﾗﾘ", cur:365050, prev:388345, curQty:806, prevQty:935},
+      {name:"ｽﾀﾝﾀﾞｰﾄ", cur:89398, prev:81138, curQty:218, prevQty:214},
+      {name:"季節新作", cur:86543, prev:81400, curQty:136, prevQty:136},
+      {name:"ﾎｰﾙｹｰｷ", cur:83914, prev:69390, curQty:22, prevQty:18},
+      {name:"焼菓子ｷﾞﾌﾄ", cur:34895, prev:116554, curQty:25, prevQty:169},
+      {name:"焼菓子", cur:30308, prev:31690, curQty:145, prevQty:137},
+      {name:"茶葉", cur:28023, prev:50637, curQty:45, prevQty:74},
+      {name:"ﾎｰﾙ季節", cur:14700, prev:54150, curQty:4, prevQty:14},
+      {name:"ﾗｲﾄｷﾞﾌﾄ", cur:14910, prev:29279, curQty:28, prevQty:44},
+      {name:"ｼﾞｪﾗｰﾄTO", cur:13105, prev:11400, curQty:42, prevQty:34},
+      {name:"焼き立て", cur:11161, prev:12636, curQty:40, prevQty:45},
+    ],
+    total: {cur:789281, prev:958153, curQty:1591, prevQty:1946}
+  },
+  "テラス": {
+    items: [
+      {name:"テラスSet", cur:2092190, prev:2273039, curQty:4765, prevQty:5965},
+      {name:"テラス", cur:2047486, prev:2041225, curQty:4250, prevQty:4513},
+      {name:"ｽﾀﾝﾀﾞｰﾄ", cur:533245, prev:664667, curQty:1157, prevQty:1369},
+      {name:"季節新作", cur:341835, prev:382438, curQty:489, prevQty:617},
+      {name:"茶葉", cur:134418, prev:116922, curQty:200, prevQty:186},
+      {name:"ﾎｰﾙ季節", cur:101254, prev:88479, curQty:31, prevQty:24},
+      {name:"焼菓子", cur:97457, prev:101112, curQty:430, prevQty:369},
+      {name:"ﾎｰﾙｹｰｷ", cur:83260, prev:83306, curQty:21, prevQty:20},
+      {name:"ｼﾞｪﾗｰﾄTO", cur:73996, prev:0, curQty:214, prevQty:0},
+      {name:"焼菓子ｷﾞﾌﾄ", cur:63150, prev:49250, curQty:31, prevQty:27},
+      {name:"季節商品", cur:58285, prev:2600, curQty:219, prevQty:11},
+    ],
+    total: {cur:5669953, prev:5987811, curQty:11995, prevQty:13657}
+  }
+};
+
+const fmt = n => n.toLocaleString('ja-JP');
+const fmtMan = n => (n/10000).toFixed(1) + '万';
+const ratio = (c,p) => p === 0 ? (c > 0 ? '---' : '---') : ((c/p)*100).toFixed(1);
+const ratioClass = (c,p) => {
+  if(p===0) return 'ratio-even';
+  const r = (c/p)*100;
+  return r >= 100 ? 'ratio-up' : 'ratio-down';
+};
+const arrowIcon = (c,p) => {
+  if(p===0) return '';
+  const r = (c/p)*100;
+  return r >= 100 ? ' &#9650;' : ' &#9660;';
+};
+
+const app = document.getElementById('app');
+
+// ===== KPI Row =====
+const allStores = ["寝屋川","茨木","香里園","GIFT","テラス","EaT","ライブラリ"];
+let grandCur = 0, grandPrev = 0, grandCurQ = 0, grandPrevQ = 0;
+allStores.forEach(s => {
+  grandCur += storeData[s].total.cur;
+  grandPrev += storeData[s].total.prev;
+  grandCurQ += storeData[s].total.curQty;
+  grandPrevQ += storeData[s].total.prevQty;
+});
+const grandRatio = ((grandCur/grandPrev)*100).toFixed(1);
+const grandQRatio = ((grandCurQ/grandPrevQ)*100).toFixed(1);
+const bestStore = allStores.reduce((a,b) => {
+  const ra = storeData[a].total.cur/storeData[a].total.prev;
+  const rb = storeData[b].total.cur/storeData[b].total.prev;
+  return ra > rb ? a : b;
+});
+const bestRatio = ((storeData[bestStore].total.cur/storeData[bestStore].total.prev)*100).toFixed(1);
+
+const kpiHtml = `
+<div class="kpi-row">
+  <div class="kpi-card">
+    <div class="label">全店舗合計売上（当期）</div>
+    <div class="value">${fmtMan(grandCur)}円</div>
+    <div class="sub">前期 ${fmtMan(grandPrev)}円</div>
+  </div>
+  <div class="kpi-card">
+    <div class="label">全店舗 売上前期比</div>
+    <div class="value ${grandRatio>=100?'up':'down'}">${grandRatio}%</div>
+    <div class="sub">${grandRatio>=100?'前期を上回っています':'前期を下回っています'}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="label">全店舗 個数前期比</div>
+    <div class="value ${grandQRatio>=100?'up':'down'}">${grandQRatio}%</div>
+    <div class="sub">当期 ${fmt(grandCurQ)}個 / 前期 ${fmt(grandPrevQ)}個</div>
+  </div>
+  <div class="kpi-card">
+    <div class="label">最も成長した店舗</div>
+    <div class="value up">${bestStore}</div>
+    <div class="sub">前期比 ${bestRatio}%</div>
+  </div>
+</div>`;
+app.insertAdjacentHTML('beforeend', kpiHtml);
+
+// ===== Analysis Section =====
+app.insertAdjacentHTML('beforeend', `
+<div class="analysis-section">
+  <h2>分析レポート ― 気になるポイント</h2>
+
+  <div class="insight-grid">
+
+    <div class="insight-card alert">
+      <h3><span class="tag tag-alert">要対策</span> ライブラリ店 ― 前期比 82.4%</h3>
+      <p>全店舗で最も落ち込みが大きい店舗です。ほぼ全カテゴリで減少しており、集客そのものが落ちている可能性があります。</p>
+      <div style="margin-top:10px">
+        <div class="data-row"><span>焼菓子ギフト</span><span class="val" style="color:#e74c3c">29.9%</span></div>
+        <div class="data-row"><span>ホール季節</span><span class="val" style="color:#e74c3c">27.1%</span></div>
+        <div class="data-row"><span>ライトギフト</span><span class="val" style="color:#e74c3c">50.9%</span></div>
+        <div class="data-row"><span>茶葉</span><span class="val" style="color:#e74c3c">55.3%</span></div>
+      </div>
+    </div>
+
+    <div class="insight-card alert">
+      <h3><span class="tag tag-alert">要注意</span> テラス店 ― 前期比 94.7%</h3>
+      <p>主力の「テラスSet」も8%減。特にライトギフトと焼き立ての激減が顕著です。</p>
+      <div style="margin-top:10px">
+        <div class="data-row"><span>ライトギフト</span><span class="val" style="color:#e74c3c">17.0%</span></div>
+        <div class="data-row"><span>焼き立て</span><span class="val" style="color:#e74c3c">23.6%</span></div>
+        <div class="data-row"><span>スタンダート</span><span class="val" style="color:#e74c3c">80.2%</span></div>
+        <div class="data-row"><span>テラスSet</span><span class="val" style="color:#e74c3c">92.0%</span></div>
+      </div>
+    </div>
+
+    <div class="insight-card warn">
+      <h3><span class="tag tag-warn">注意</span> 茨木店 ― 売上最大なのに減少 95.2%</h3>
+      <p>売上規模が全店トップ（約1,218万円）なのに前期割れ。焼き立て・焼菓子・茶葉の落ち込みが大きく、インパクトが大きいです。</p>
+      <div style="margin-top:10px">
+        <div class="data-row"><span>焼き立て</span><span class="val" style="color:#e74c3c">59.7%</span></div>
+        <div class="data-row"><span>焼菓子</span><span class="val" style="color:#e74c3c">63.8%</span></div>
+        <div class="data-row"><span>茶葉</span><span class="val" style="color:#e74c3c">73.1%</span></div>
+        <div class="data-row"><span>ロールケーキ</span><span class="val" style="color:#e74c3c">76.9%</span></div>
+      </div>
+    </div>
+
+    <div class="insight-card good">
+      <h3><span class="tag tag-good">好調</span> 香里園店 113.4% / EaT店 115.2%</h3>
+      <p>この2店舗が全体を下支えしています。香里園はスタンダート・ホールケーキ・季節ギフトが幅広く成長。EaTはイートインが安定して牽引しています。</p>
+      <div style="margin-top:10px">
+        <div class="data-row"><span>香里園 スタンダート</span><span class="val" style="color:#2ecc71">119.7%</span></div>
+        <div class="data-row"><span>香里園 ホールケーキ</span><span class="val" style="color:#2ecc71">118.2%</span></div>
+        <div class="data-row"><span>香里園 季節ギフト</span><span class="val" style="color:#2ecc71">367.2%</span></div>
+        <div class="data-row"><span>EaT イートイン</span><span class="val" style="color:#2ecc71">112.7%</span></div>
+      </div>
+    </div>
+
+    <div class="insight-card info">
+      <h3><span class="tag tag-info">構造的課題</span> 全店共通：個数減 &times; 単価上昇</h3>
+      <p>ほぼ全店で「売れる個数は減っているが単価でカバー」している状態です。値上げ依存にならないか注視が必要です。</p>
+      <div style="margin-top:10px">
+        <div class="data-row"><span>寝屋川</span><span>売上101.5% / 個数<b style="color:#e74c3c">92.1%</b></span></div>
+        <div class="data-row"><span>茨木</span><span>売上95.2% / 個数<b style="color:#e74c3c">91.1%</b></span></div>
+        <div class="data-row"><span>香里園</span><span>売上113.4% / 個数111.7%</span></div>
+        <div class="data-row"><span>テラス</span><span>売上94.7% / 個数<b style="color:#e74c3c">87.8%</b></span></div>
+        <div class="data-row"><span>ライブラリ</span><span>売上82.4% / 個数<b style="color:#e74c3c">81.8%</b></span></div>
+      </div>
+    </div>
+
+    <div class="insight-card warn">
+      <h3><span class="tag tag-warn">異変</span> 寝屋川 茶葉 ― 前期比 9.3%</h3>
+      <p>73,620円 → 6,810円と激減。取り扱い縮小か別店舗への移管の可能性があります。一方、GIFT店の茶葉は115.9%で好調 ― チャネル移動が起きている可能性。</p>
+    </div>
+
+  </div>
+
+  <div class="summary-box">
+    <h3>アクションまとめ</h3>
+    <ul>
+      <li><span class="label-tag label-red">最優先</span> ライブラリ店の集客改善策を検討（全カテゴリで減少、根本的な集客問題の可能性）</li>
+      <li><span class="label-tag label-red">要対策</span> 茨木店・テラス店の主力商品てこ入れ（焼き立て・焼菓子・テラスSet）</li>
+      <li><span class="label-tag label-green">横展開</span> 香里園・EaTの成功要因を他店に展開（何が客数増に繋がったか分析）</li>
+      <li><span class="label-tag label-yellow">注視</span> 全店で客数減・単価上昇傾向 → 値上げ依存の構造になっていないか確認</li>
+      <li><span class="label-tag label-blue">確認</span> 寝屋川の茶葉激減 → GIFT店への移管なら問題なし、そうでなければ要因調査</li>
+    </ul>
+  </div>
+</div>
+`);
+
+// ===== Chart 1: Store total comparison =====
+app.insertAdjacentHTML('beforeend', `
+<div class="chart-grid">
+  <div class="chart-card full">
+    <h2>店舗別 売上金額比較（当期 vs 前期）</h2>
+    <div class="desc">各店舗の合計売上金額を当期・前期で比較。棒の上の数字は前期比(%)。</div>
+    <div class="chart-container"><canvas id="chart-store-sales" height="100"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <h2>店舗別 前期比率</h2>
+    <div class="desc">100%ライン以上 = 前期より成長。色で一目瞭然。</div>
+    <div class="chart-container"><canvas id="chart-store-ratio" height="140"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <h2>店舗別 売上構成比（当期）</h2>
+    <div class="desc">全店舗合計に対する各店舗の売上シェア。</div>
+    <div class="chart-container"><canvas id="chart-store-pie" height="140"></canvas></div>
+  </div>
+</div>`);
+
+const storeLabels = allStores;
+const storeCur = storeLabels.map(s => storeData[s].total.cur);
+const storePrev = storeLabels.map(s => storeData[s].total.prev);
+const storeRatios = storeLabels.map(s => ((storeData[s].total.cur/storeData[s].total.prev)*100).toFixed(1));
+
+const colors = ['#3498db','#e74c3c','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22'];
+const colorsCur = ['#3498db','#e74c3c','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22'];
+const colorsPrev = ['#85c1e9','#f1948a','#82e0aa','#f9e79f','#c39bd3','#76d7c4','#f0b27a'];
+
+new Chart(document.getElementById('chart-store-sales'), {
+  type: 'bar',
+  data: {
+    labels: storeLabels,
+    datasets: [
+      { label: '当期', data: storeCur, backgroundColor: colorsCur, borderRadius: 6 },
+      { label: '前期', data: storePrev, backgroundColor: colorsPrev, borderRadius: 6 }
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      datalabels: {
+        display: (ctx) => ctx.datasetIndex === 0,
+        anchor: 'end', align: 'top', color: '#333', font: {weight:'bold', size:13},
+        formatter: (v,ctx) => storeRatios[ctx.dataIndex] + '%'
+      },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => ctx.dataset.label + ': ' + fmt(ctx.raw) + '円'
+        }
+      }
+    },
+    scales: {
+      y: {
+        ticks: { callback: v => fmtMan(v) },
+        grid: { color: '#eee' }
+      }
+    }
+  }
+});
+
+// Ratio bar
+const ratioColors = storeRatios.map(r => r >= 100 ? '#2ecc71' : '#e74c3c');
+new Chart(document.getElementById('chart-store-ratio'), {
+  type: 'bar',
+  data: {
+    labels: storeLabels,
+    datasets: [{
+      label: '前期比(%)',
+      data: storeRatios.map(Number),
+      backgroundColor: ratioColors,
+      borderRadius: 6
+    }]
+  },
+  options: {
+    indexAxis: 'y',
+    responsive: true,
+    plugins: {
+      legend: { display: false },
+      datalabels: {
+        anchor: 'end', align: 'end', color: '#333', font: {weight:'bold'},
+        formatter: v => v + '%'
+      },
+      annotation: {}
+    },
+    scales: {
+      x: {
+        min: 70, max: 130,
+        grid: { color: (ctx) => ctx.tick.value === 100 ? '#333' : '#eee' }
+      }
+    }
+  }
+});
+
+// Pie
+new Chart(document.getElementById('chart-store-pie'), {
+  type: 'doughnut',
+  data: {
+    labels: storeLabels,
+    datasets: [{
+      data: storeCur,
+      backgroundColor: colorsCur,
+      borderWidth: 2,
+      borderColor: '#fff'
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      datalabels: {
+        color: '#fff', font: {weight:'bold', size:11},
+        formatter: (v) => ((v/grandCur)*100).toFixed(1) + '%'
+      }
+    }
+  }
+});
+
+// ===== Per-store detail sections =====
+const allStoresFull = ["寝屋川","茨木","香里園","GIFT","テラス","EaT","ライブラリ"];
+
+allStoresFull.forEach((storeName, si) => {
+  const sd = storeData[storeName];
+  const sorted = [...sd.items].sort((a,b) => b.cur - a.cur);
+
+  let html = `<div class="store-section">
+    <h2>${storeName}店</h2>
+    <div class="chart-grid">
+      <div class="chart-card">
+        <h2>商品別 売上金額比較</h2>
+        <div class="desc">上位商品の当期 vs 前期</div>
+        <div class="chart-container"><canvas id="chart-detail-${si}" height="160"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h2>商品別 売上一覧</h2>
+        <div class="desc">全商品の詳細数値。金額比率で色分け表示。</div>
+        <div style="max-height:400px;overflow-y:auto;">
+          <table class="detail">
+            <thead><tr>
+              <th>商品</th>
+              <th>当期売上</th>
+              <th>前期売上</th>
+              <th>前期比</th>
+              <th>当期個数</th>
+              <th>前期個数</th>
+            </tr></thead><tbody>`;
+
+  sorted.forEach(item => {
+    const r = item.prev === 0 ? '---' : ((item.cur/item.prev)*100).toFixed(1) + '%';
+    const rc = item.prev === 0 ? 'ratio-even' : (item.cur/item.prev >= 1 ? 'ratio-up' : 'ratio-down');
+    html += `<tr>
+      <td>${item.name}</td>
+      <td>${fmt(item.cur)}円</td>
+      <td>${fmt(item.prev)}円</td>
+      <td><span class="ratio-badge ${rc}">${r}</span></td>
+      <td>${fmt(item.curQty)}</td>
+      <td>${fmt(item.prevQty)}</td>
+    </tr>`;
+  });
+
+  const tr = sd.total;
+  const totalR = ((tr.cur/tr.prev)*100).toFixed(1);
+  const totalRc = tr.cur/tr.prev >= 1 ? 'ratio-up' : 'ratio-down';
+  html += `</tbody><tfoot><tr style="font-weight:bold;background:#f8f9fa;">
+    <td>合計</td>
+    <td>${fmt(tr.cur)}円</td>
+    <td>${fmt(tr.prev)}円</td>
+    <td><span class="ratio-badge ${totalRc}">${totalR}%</span></td>
+    <td>${fmt(tr.curQty)}</td>
+    <td>${fmt(tr.prevQty)}</td>
+  </tr></tfoot></table></div></div></div></div>`;
+
+  app.insertAdjacentHTML('beforeend', html);
+
+  // Bar chart per store
+  const top = sorted.slice(0, 8);
+  new Chart(document.getElementById(`chart-detail-${si}`), {
+    type: 'bar',
+    data: {
+      labels: top.map(i => i.name),
+      datasets: [
+        { label: '当期', data: top.map(i => i.cur), backgroundColor: colorsCur[si], borderRadius: 4 },
+        { label: '前期', data: top.map(i => i.prev), backgroundColor: colorsPrev[si], borderRadius: 4 }
+      ]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      plugins: {
+        datalabels: { display: false },
+        tooltip: {
+          callbacks: { label: ctx => ctx.dataset.label + ': ' + fmt(ctx.raw) + '円' }
+        }
+      },
+      scales: {
+        x: { ticks: { callback: v => fmtMan(v) }, grid: { color: '#eee' } }
+      }
+    }
+  });
+});
+
+</script>
+</body>
+</html>
